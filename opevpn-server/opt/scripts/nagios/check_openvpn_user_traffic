@@ -1,9 +1,9 @@
 #!/bin/sh
 ###################################################################
 #                                                                  #
-#         www.361way.com                                           #
 # Useage: check_openvpn_user_traffic -u commonname -w warn -c crit #
 # it's for pnp4nagios check the traffic                            #
+# Based on: check_traffic (www.361way.com)
 #                                                                  #
 ####################################################################
 USERSTATUS=/opt/scripts/nagios/check_openvpn_user_status
