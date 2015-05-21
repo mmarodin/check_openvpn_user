@@ -1,0 +1,41 @@
+*nat
+:PREROUTING ACCEPT [0:0]
+:POSTROUTING ACCEPT [0:0]
+:OUTPUT ACCEPT [0:0]
+
+# OpenVPN Masquerading
+-A POSTROUTING -s 192.168.200.0/24 -o eth1 -j MASQUERADE
+
+COMMIT
+
+*filter
+:INPUT DROP [0:0]
+:FORWARD DROP [0:0]
+:OUTPUT ACCEPT [0:0]
+
+# OpenVPN in
+-A INPUT -i eth0 -p udp --dport 1194 -j ACCEPT
+
+# NRPE in for monitoring
+-A INPUT -i eth1 -s 192.168.0.3 -p tcp --dport 5666 -j ACCEPT
+# Ping in for monitoring
+-A INPUT -i eth1 -s 192.168.0.3 -p icmp -j ACCEPT
+
+# Established
+-A INPUT -i eth0 -m state --state RELATED,ESTABLISHED -j ACCEPT
+-A INPUT -i eth1 -m state --state RELATED,ESTABLISHED -j ACCEPT
+
+#...
+
+# OpenVPN Morgan Marodin
+#-A INPUT -i tun0 -s 192.168.200.242 -p tcp --dport 22 -j ACCEPT
+-A FORWARD -i tun0 -s 192.168.200.242 -d 192.168.100.0/24 -j ACCEPT
+-A FORWARD -i tun0 -s 192.168.200.242 -d 192.168.101.2 -j ACCEPT
+
+#...
+
+# Established
+-A FORWARD -i eth0 -m state --state RELATED,ESTABLISHED -j ACCEPT
+-A FORWARD -i eth1 -m state --state RELATED,ESTABLISHED -j ACCEPT
+
+COMMIT

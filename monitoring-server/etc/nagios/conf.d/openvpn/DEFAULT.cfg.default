@@ -1,0 +1,9 @@
+# 'Traffic DEFAULT' service definition
+define service {
+        use                             sys-service,service-pnp
+        hosts                           peer01
+        service_description             Traffic DEFAULT
+        check_command                   check_openvpn_user_traffic!DEFAULT
+        normal_check_interval           5
+}
+

@@ -1,0 +1,243 @@
+#!/bin/sh
+
+# Naemon - Startup script for the Naemon monitoring daemon
+#
+# chkconfig:    - 85 15
+# description:  Naemon is a service monitoring system
+# processname:  naemon
+# config:       /etc/naemon/naemon.cfg
+# pidfile:      /var/run/naemon/naemon.pid
+#
+### BEGIN INIT INFO
+# Provides:          naemon
+# Required-Start:    $local_fs $remote_fs $syslog $network
+# Required-Stop:     $local_fs $remote_fs $syslog $network
+# Should-Start:
+# Should-Stop:
+# Default-Start:     3 5
+# Default-Stop:      0 1 2 6
+# Short-Description: start and stop Naemon monitoring server
+# Description:       Naemon is is a service monitoring system
+### END INIT INFO
+
+# Source function library.
+if [ -e /etc/rc.d/init.d/functions ]; then
+  . /etc/rc.d/init.d/functions
+fi
+
+prefix="/usr"
+exec_prefix="/usr"
+localstatedir="/var/lib/naemon"
+exec="/usr/bin/naemon"
+prog="naemon"
+sysconfdir="/etc/naemon"
+config="/etc/naemon/naemon.cfg"
+pidfile="/var/run/naemon/naemon.pid"
+pidfolder="`dirname $pidfile`"
+user="naemon"
+group="naemon"
+checkconfig="false"
+
+# Default nice for performance, change in sysconfig file not here!
+NICELEVEL=0
+
+#Start: Morgan Marodin personalization
+OPENVPN=/opt/scripts/create_nagios_openvpn-traffic.sh
+#End: Morgan Marodin personalization
+
+test -e /etc/sysconfig/$prog && . /etc/sysconfig/$prog
+
+lockfile=/var/lock/subsys/$prog
+
+status() {
+    [ ! -e $pidfile ] && return 1;
+    PID=`cat $pidfile`;
+    kill -0 $PID
+    return $?
+}
+
+pidof_naemon() {
+    if [ -e "$pidfile" ]; then
+        if pidof $prog | tr ' ' '\n' | grep -w $(cat $pidfile); then
+            return 0
+        fi
+    fi
+    return 1
+}
+
+check_config() {
+    TMPFILE=$(mktemp /tmp/.configtest.XXXXXXXX)
+    $0 configtest > "$TMPFILE"
+    WARN=`grep ^"Total Warnings:" "$TMPFILE" |awk -F: '{print \$2}' |sed s/' '//g`
+    ERR=`grep ^"Total Errors:" "$TMPFILE" |awk -F: '{print \$2}' |sed s/' '//g`
+
+    if test "${ERR}" != "0"; then
+        # We'll write out the errors to a file we can have a
+        # script watching for
+        echo "WARNING: Errors in config files - see log for details: $TMPFILE" > /var/cache/naemon/naemon.configtest
+        grep -i ^error "$TMPFILE" >> /var/cache/naemon/naemon.configtest
+        chmod 0644 /var/cache/naemon/naemon.configtest
+        cat "$TMPFILE"
+        exit 8
+    elif test "${WARN}" != "0"; then
+        # Warnings don't need to be saved, so just print them and
+        # be done with it.
+        echo "WARNING: Warnings in config files - see log for details: $TMPFILE" > /var/cache/naemon/naemon.configtest
+        cat "$TMPFILE"
+    else
+        echo "OK - Configuration check verified" > /var/cache/naemon/naemon.configtest
+        chmod 0644 /var/cache/naemon/naemon.configtest
+        /bin/rm "$TMPFILE"
+    fi
+    return 0
+}
+
+naemon_wait_stop() {
+    pidtmp=$(pidof_naemon) || true
+    if kill -0 "${pidtmp:-}" 2> /dev/null; then
+        pid=$pidtmp
+    fi
+    stop
+
+    # wait until really stopped
+    if [ -n "${pid:-}" ]; then
+        i=0
+        while kill -0 "${pid:-}" 2> /dev/null;  do
+        if [ $i = '60' ]; then
+            break;
+        else
+            if [ $i = '0' ]; then
+                echo -n " ... waiting "
+            else
+                echo -n "."
+            fi
+            i=$(($i+1))
+            sleep 1
+        fi
+        done
+    fi
+}
+
+start() {
+    test -x $exec || exit 5
+    test -f $config || exit 6
+    if [ "$checkconfig" = "false" ]; then
+        check_config
+    fi
+    #Start: Morgan Marodin personalization
+    echo -n "Retrieving Openvpn user..."
+    $OPENVPN nolog
+    echo "done"
+    #End: Morgan Marodin personalization
+
+    echo -n "Starting $prog: "
+    # Create PID folder if it does not exist
+    if [ ! -d $pidfolder ]; then
+        mkdir $pidfolder
+        chown $user:$group $pidfolder
+    fi
+    # We need to _make sure_ the precache is there and verified
+    # Raise priority to make it run better
+    if type start-stop-daemon >/dev/null 2>&1; then
+        NICE_OPT=""
+        if [ $NICELEVEL != "0" ]; then NICE_OPT="--nicelevel $NICELEVEL"; fi
+        start-stop-daemon $NICE_OPT --start --user $user --name $prog --pidfile $pidfile --exec $exec -- -d $config
+    else
+        daemon --user=$user $exec -d $config
+    fi
+    retval=$?
+    echo
+    if [ -d /var/lock/subsys ]; then
+      test $retval -eq 0 && touch $lockfile
+    fi
+    return $retval
+}
+
+stop() {
+    echo -n "Stopping $prog: "
+    pid=$(pidof_naemon) || true
+    if [ "${pid}" ]; then
+        kill $pid
+    else
+        return 1
+    fi
+    retval=$?
+    echo
+    test $retval -eq 0 && rm -f $lockfile
+    return $retval
+}
+
+
+restart() {
+    check_config
+    checkconfig="true"
+    pid=$(pidof_naemon) || true
+    naemon_wait_stop
+    echo
+    start
+}
+
+reload() {
+    check_config
+    checkconfig="true"
+    #Start: Morgan Marodin personalization
+    echo -n "Retrieving Openvpn user..."
+    $OPENVPN nolog
+    echo "done"
+    #End: Morgan Marodin personalization
+    echo -n "Reloading $prog: "
+    pkill -HUP -u ${user} -f ${exec}
+    retval=$?
+    echo
+}
+
+force_reload() {
+    restart
+}
+
+case "$1" in
+    start)
+        status $prog && exit 0
+        $1
+        ;;
+    stop)
+        status $prog|| exit 0
+        $1
+        ;;
+    restart)
+        $1
+        ;;
+    reload)
+        status $prog || exit 7
+        $1
+        ;;
+    force-reload)
+        force_reload
+        ;;
+    status)
+        if status $prog; then
+          PID=`cat $pidfile`;
+          echo "naemon (pid $PID) is running..."
+          exit 0
+        else
+          echo "naemon is stopped"
+          exit 1
+        fi
+        ;;
+    condrestart|try-restart)
+        status $prog|| exit 0
+        restart
+        ;;
+    configtest|check|checkconfig)
+        if type runuser >/dev/null 2>&1; then
+          runuser -s /bin/bash - $user -c "$corelimit >/dev/null 2>&1 ; $exec -vp $config"
+        else
+          /bin/su - -s /bin/sh $user -c "$corelimit >/dev/null 2>&1 ; $exec -vp $config"
+        fi
+        RETVAL=$?
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|status|restart|condrestart|try-restart|reload|force-reload|configtest}"
+        exit 2
+esac
+exit $?

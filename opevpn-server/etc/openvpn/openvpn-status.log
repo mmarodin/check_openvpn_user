@@ -1,0 +1,10 @@
+OpenVPN CLIENT LIST
+Updated,Fri May 15 17:11:26 2015
+Common Name,Real Address,Bytes Received,Bytes Sent,Connected Since
+Morgan Marodin,2XX.1XX.2XX.2XX:57578,510752,1025306,Fri May 15 14:35:37 2015
+ROUTING TABLE
+Virtual Address,Common Name,Real Address,Last Ref
+192.168.200.242,Morgan Marodin,2XX.1XX.2XX.2XX:57578,Fri May 15 17:09:23 2015
+GLOBAL STATS
+Max bcast/mcast queue length,0
+END

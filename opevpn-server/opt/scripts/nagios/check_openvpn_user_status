@@ -1,0 +1,76 @@
+#!/bin/sh
+#--------
+COMMONNAME=$1
+BAND=$2
+LOG=/etc/openvpn/openvpn-status.log
+LINE=3
+COUNT=0
+ifs=$IFS
+ifscomma=','
+ifsnl='
+'
+
+  if [ "$COMMONNAME" == "" ] ; then
+    echo "Missing Commonname!"
+    exit 3
+  fi
+
+  if [ ! -f $LOG ] ; then
+    echo "Missing status log!"
+    exit 3
+  fi
+
+IFS=$ifsnl
+ROW=($(cat $LOG))
+
+  if [ "$COMMONNAME" == "all" ] ; then
+    OUT=""
+      while [ "${ROW[$LINE]}" != "ROUTING TABLE" ] ; do
+	COUNT=$[COUNT+1]
+	WHO=${ROW[$LINE]}
+	IFS=$ifscomma
+	set $WHO
+	#echo "$1 - IP ${2:0:$[`expr index "$2" \:`-1]}, Received bytes $3, Sent bytes $4"
+	  if [ "$COUNT" == "1" ] ; then
+	    OUT="$1 (${2:0:$[`expr index "$2" \:`-1]})"
+	  else
+	    OUT="$OUT, $1 (${2:0:$[`expr index "$2" \:`-1]})"
+	  fi
+	IFS=$ifs
+        LINE=$[LINE+1]
+      done
+      if [ "$COUNT" == "0" ] ; then
+	echo "No user connected|'Total users'=0;-1;-1"
+      else
+	echo "$OUT|'Total users'=$COUNT;-1;-1"
+      fi
+    exit 0
+  fi
+
+IFS=$ifscomma
+
+  while [ "${ROW[$LINE]}" != "ROUTING TABLE" ] ; do
+    WHO=${ROW[$LINE]}
+    set $WHO
+      if [ "$COMMONNAME" == "${1//[[:blank:]]/}" ] ; then
+	  if [ "$BAND" == "traffic" ] ; then
+	    echo "$3 $4"
+	    IFS=$ifs
+	    exit 0
+	  fi
+	echo "Connected - IP ${2:0:$[`expr index "$2" \:`-1]}, Received bytes $3, Sent bytes $4|'$1'=1;-1;1"
+	IFS=$ifs
+	exit 0
+      fi
+    LINE=$[LINE+1]
+  done
+
+  if [ "$BAND" == "traffic" ] ; then
+    echo "0 0 no"
+    IFS=$ifs
+    exit 0
+  fi
+
+echo "$COMMONNAME: disconnected|'User connected'=0;-1;1"
+IFS=$ifs
+exit 0

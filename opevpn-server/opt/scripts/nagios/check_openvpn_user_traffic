@@ -1,0 +1,92 @@
+#!/bin/sh
+###################################################################
+#                                                                  #
+#         www.361way.com                                           #
+# Useage: check_openvpn_user_traffic -u commonname -w warn -c crit #
+# it's for pnp4nagios check the traffic                            #
+#                                                                  #
+####################################################################
+USERSTATUS=/opt/scripts/nagios/check_openvpn_user_status
+
+while getopts ":u:c:w:h" optname
+  do
+    case "$optname" in
+      "u")
+        CN=$OPTARG
+	CNb=${CN//[[:blank:]]/}
+        ;;
+      "c")
+        CRIT=$OPTARG
+        ;;
+      "w")
+        WARN=$OPTARG
+        ;;
+      "h")
+        echo "Useage: check_openvpn_user_traffic -u commonname -w warn -c crit"
+        exit
+        ;;
+      "?")
+        echo "Unknown option $OPTARG"
+        exit
+        ;;
+      ":")
+        echo "No argument value for option $OPTARG"
+        exit
+        ;;
+      *)
+      # Should not occur
+        echo "Unknown error while processing options"
+        exit
+        ;;
+    esac
+  done
+
+[ -z $CNb ] && echo "Please input Common Name!"&&exit
+[ -z $WARN ] && WARN=1048576
+[ -z $CRIT ] && CRIT=2097152
+
+DIR=/tmp/traffic
+FILE=$DIR/.openvpn-$CNb.tmp
+[ -e $DIR ] || mkdir -p $DIR
+chown -R nagios.nagios $DIR
+[ -e $FILE ] || >$FILE
+if [ `cat $FILE | wc -c` -eq 0 ];then
+        echo -en `date +%s`"\t" >$FILE
+	echo -en `$USERSTATUS "$CN" traffic | awk '{print $1 "\t" $2}'` >>$FILE
+        echo "This is first run"
+else
+        New_Time=`date +%s`
+        New_In=`$USERSTATUS "$CN" traffic | awk '{print $1}'`
+        New_Out=`$USERSTATUS "$CN" traffic | awk '{print $2}'`
+	Connected=`$USERSTATUS "$CN" traffic | awk '{print $3}'`
+        Old_Time=`cat $FILE | awk '{print $1}'`
+        Old_In=`cat $FILE | awk '{print $2}'`
+        Old_Out=`cat $FILE | awk '{print $3}'`
+
+        Diff_Time=`echo "$New_Time-$Old_Time"|bc`
+        [ $Diff_Time -le 5 ] && echo "less 5s" && exit
+        Diff_In=`echo "scale=0;($New_In-$Old_In)*8/$Diff_Time"|bc`
+        Diff_Out=`echo "scale=0;($New_Out-$Old_Out)*8/$Diff_Time"|bc`
+        [ $Diff_In -lt 0 ] && Diff_In=`cat $FILE | awk '{print $4}'`
+        [ $Diff_Out -lt 0 ] && Diff_Out=`cat $FILE | awk '{print $5}'`
+        echo "$New_Time $New_In $New_Out $Diff_In $Diff_Out" >$FILE
+
+	if [ "$Connected" == "no" ] ; then
+		echo -e "Not connected|In=${Diff_In};${WARN};${CRIT};0;0;Out=${Diff_Out};${WARN};${CRIT};0;0"
+		exit 0
+	fi
+
+        if [ $Diff_In -gt $CRIT -o $Diff_In -eq $CRIT ];then
+                echo -e "CRIT - $Diff_In|In=${Diff_In};${WARN};${CRIT};0;0;Out=${Diff_Out};${WARN};${CRIT};0;0"
+                exit 2
+        fi
+        if [ $Diff_In -gt $WARN -o $Diff_In -eq $WARN ];then
+                echo -e "WARN - $Diff_In|In=${Diff_In};${WARN};${CRIT};0;0;Out=${Diff_Out};${WARN};${CRIT};0;0"
+                exit 1
+        fi
+        if [ $Diff_In -lt $WARN ];then
+                echo -e "OK - $Diff_In|In=${Diff_In};${WARN};${CRIT};0;0;Out=${Diff_Out};${WARN};${CRIT};0;0"
+                exit 0
+        fi
+
+fi

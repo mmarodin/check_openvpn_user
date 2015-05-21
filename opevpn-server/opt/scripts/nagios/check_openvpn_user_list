@@ -1,0 +1,15 @@
+#!/bin/sh
+#--------
+CLIENTS=/etc/openvpn/clients
+EXCLUDE1="DEFAULT"
+EXCLUDE2="@"
+ifs=$IFS
+ifsnl='
+'
+
+IFS=$ifsnl
+#  for CN in `ls -b $CLIENTS | grep -v $EXCLUDE` ; do
+  for CN in `ls $CLIENTS | grep -v $EXCLUDE1 | grep -v $EXCLUDE2` ; do
+    echo $CN
+  done
+IFS=$ifs
